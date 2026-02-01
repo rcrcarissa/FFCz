@@ -640,11 +640,6 @@ void ProjectionSolver<T>::calculate_statistics(T *h_base_data) {
                              (cufftDoubleComplex *)d_decomp_err_freq));
   }
 
-  mrfe = findMaxAbsComplex<T>(d_decomp_err_freq, F);
-  mrfe /= params_.freq_amp_max;
-  ssnr = computeSSNR<T>(params_.d_orig_freq, d_decomp_err_freq, params_.Nx,
-                        params_.Ny, params_.Nz);
-
   std::cout << "MAE: " << mae << std::endl;
   std::cout << "MSE: " << mse << std::endl;
   std::cout << "RMSE: " << rmse << std::endl;
@@ -654,6 +649,8 @@ void ProjectionSolver<T>::calculate_statistics(T *h_base_data) {
   std::cout << "max absolute frequency error: " << mrfe << std::endl;
   mrfe /= params_.freq_amp_max;
   std::cout << "max relative frequency error: " << mrfe << std::endl;
+  ssnr = computeSSNR<T>(params_.d_orig_freq, d_decomp_err_freq, params_.Nx,
+                        params_.Ny, params_.Nz);
   std::cout << "SSNR: " << ssnr << " dB" << std::endl;
 
   CHECK_CUDA(cudaFree(d_freq_edit_decomp));
