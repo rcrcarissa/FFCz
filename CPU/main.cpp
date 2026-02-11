@@ -231,8 +231,8 @@ template <typename T> void Run() {
     } else {
       readRawArrayBinary(originalFile, h_orig_data, N, DataType::FLOAT);
     }
-    const size_t max_iterations = 100;
-    const T tolerance = 1e-9f;
+    const size_t max_iterations = 40;
+    const T tolerance = 1e-6f;
 
     auto start = std::chrono::high_resolution_clock::now();
 
