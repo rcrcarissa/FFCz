@@ -7,14 +7,14 @@ echo "Building FFCz GPU..."
 cd "$SCRIPT_DIR/FFCz/GPU"
 mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j8
+make -j
 echo "FFCz GPU built successfully!"
 
 echo "Building FFCz CPU..."
 cd "$SCRIPT_DIR/FFCz/CPU"
 mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j8
+make -j
 echo "FFCz CPU built successfully!"
 
 echo ""
