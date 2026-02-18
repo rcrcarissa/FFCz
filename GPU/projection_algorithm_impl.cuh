@@ -101,17 +101,10 @@ template <typename T> void ProjectionSolver<T>::deallocate_device_memory() {
 }
 
 template <typename T> void ProjectionSolver<T>::setup_fft_plans() {
-  if constexpr (std::is_same_v<T, float>) {
-    CHECK_CUFFT(cufftPlan3d(&params_.fft_plan_forward, params_.Nx, params_.Ny,
-                            params_.Nz, CUFFT_R2C));
-    CHECK_CUFFT(cufftPlan3d(&params_.fft_plan_inverse, params_.Nx, params_.Ny,
-                            params_.Nz, CUFFT_C2R));
-  } else {
-    CHECK_CUFFT(cufftPlan3d(&params_.fft_plan_forward, params_.Nx, params_.Ny,
-                            params_.Nz, CUFFT_D2Z));
-    CHECK_CUFFT(cufftPlan3d(&params_.fft_plan_inverse, params_.Nx, params_.Ny,
-                            params_.Nz, CUFFT_Z2D));
-  }
+  createCufftPlan(&params_.fft_plan_forward, params_.Nx, params_.Ny, params_.Nz,
+                  CufftTraits<T>::R2C);
+  createCufftPlan(&params_.fft_plan_inverse, params_.Nx, params_.Ny, params_.Nz,
+                  CufftTraits<T>::C2R);
 }
 
 template <typename T> void ProjectionSolver<T>::cleanup_fft_plans() {
@@ -204,6 +197,11 @@ void ProjectionSolver<T>::extract_compact_representation() {
   size_t F = params_.F;
   dim3 block(BLOCK_SIZE);
   dim3 spat_grid((N + block.x - 1) / block.x);
+
+  results_.h_freq_min_edit = T(0);
+  results_.h_freq_max_edit = T(0);
+  results_.h_spat_min_edit = T(0);
+  results_.h_spat_max_edit = T(0);
 
   compactNonZero(results_.d_freq_edits, results_.d_freq_edit_compact,
                  results_.h_num_active_freq, results_.convergence_tol, 2 * F);
@@ -547,40 +545,53 @@ void ProjectionSolver<T>::calculate_statistics(T *h_base_data) {
 
   dim3 block(BLOCK_SIZE);
   dim3 freq_grid((2 * F + block.x - 1) / block.x);
-  // Values quantized as 0 are dequantized to be 0
-  T normalized_0 = -results_.h_freq_min_edit /
-                   (results_.h_freq_max_edit - results_.h_freq_min_edit);
-  T quant_0;
-  if (normalized_0 > 0.5)
-    quant_0 = ceil(normalized_0 * ((1u << m) - 1));
-  else
-    quant_0 = floor(normalized_0 * ((1u << m) - 1));
-  T thres_lower = quant_0 / ((1u << m) - 1) *
-                      (results_.h_freq_max_edit - results_.h_freq_min_edit) +
-                  results_.h_freq_min_edit;
-  T thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
-                      (results_.h_freq_max_edit - results_.h_freq_min_edit) +
-                  results_.h_freq_min_edit;
-  quantize_and_dequantize<<<freq_grid, block>>>(
-      results_.d_freq_edits, d_freq_edit_decomp, results_.h_freq_min_edit,
-      results_.h_freq_max_edit, 2 * F, thres_lower, thres_upper);
-
   dim3 spat_grid((N + block.x - 1) / block.x);
-  normalized_0 = -results_.h_spat_min_edit /
-                 (results_.h_spat_max_edit - results_.h_spat_min_edit);
-  if (normalized_0 > 0.5)
-    quant_0 = ceil(normalized_0 * ((1u << m) - 1));
-  else
-    quant_0 = floor(normalized_0 * ((1u << m) - 1));
-  thres_lower = quant_0 / ((1u << m) - 1) *
-                    (results_.h_spat_max_edit - results_.h_spat_min_edit) +
-                results_.h_spat_min_edit;
-  thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
-                    (results_.h_spat_max_edit - results_.h_spat_min_edit) +
-                results_.h_spat_min_edit;
-  quantize_and_dequantize<<<spat_grid, block>>>(
-      results_.d_spat_edits, d_spat_edit_decomp, results_.h_spat_min_edit,
-      results_.h_spat_max_edit, N, thres_lower, thres_upper);
+
+  // Frequency edits: quantize-dequantize, or copy directly if min == max
+  if (results_.h_freq_min_edit != results_.h_freq_max_edit) {
+    T normalized_0 = -results_.h_freq_min_edit /
+                     (results_.h_freq_max_edit - results_.h_freq_min_edit);
+    T quant_0;
+    if (normalized_0 > 0.5)
+      quant_0 = ceil(normalized_0 * ((1u << m) - 1));
+    else
+      quant_0 = floor(normalized_0 * ((1u << m) - 1));
+    T thres_lower = quant_0 / ((1u << m) - 1) *
+                        (results_.h_freq_max_edit - results_.h_freq_min_edit) +
+                    results_.h_freq_min_edit;
+    T thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
+                        (results_.h_freq_max_edit - results_.h_freq_min_edit) +
+                    results_.h_freq_min_edit;
+    quantize_and_dequantize<<<freq_grid, block>>>(
+        results_.d_freq_edits, d_freq_edit_decomp, results_.h_freq_min_edit,
+        results_.h_freq_max_edit, 2 * F, thres_lower, thres_upper);
+  } else {
+    CHECK_CUDA(cudaMemcpy(d_freq_edit_decomp, results_.d_freq_edits,
+                          2 * F * sizeof(T), cudaMemcpyDeviceToDevice));
+  }
+
+  // Spatial edits: quantize-dequantize, or copy directly if min == max
+  if (results_.h_spat_min_edit != results_.h_spat_max_edit) {
+    T normalized_0 = -results_.h_spat_min_edit /
+                     (results_.h_spat_max_edit - results_.h_spat_min_edit);
+    T quant_0;
+    if (normalized_0 > 0.5)
+      quant_0 = ceil(normalized_0 * ((1u << m) - 1));
+    else
+      quant_0 = floor(normalized_0 * ((1u << m) - 1));
+    T thres_lower = quant_0 / ((1u << m) - 1) *
+                        (results_.h_spat_max_edit - results_.h_spat_min_edit) +
+                    results_.h_spat_min_edit;
+    T thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
+                        (results_.h_spat_max_edit - results_.h_spat_min_edit) +
+                    results_.h_spat_min_edit;
+    quantize_and_dequantize<<<spat_grid, block>>>(
+        results_.d_spat_edits, d_spat_edit_decomp, results_.h_spat_min_edit,
+        results_.h_spat_max_edit, N, thres_lower, thres_upper);
+  } else {
+    CHECK_CUDA(cudaMemcpy(d_spat_edit_decomp, results_.d_spat_edits,
+                          N * sizeof(T), cudaMemcpyDeviceToDevice));
+  }
 
   dim3 half_freq_grid((F + block.x - 1) / block.x);
   real_imag_to_complex<T><<<half_freq_grid, block>>>(
@@ -624,9 +635,6 @@ void ProjectionSolver<T>::calculate_statistics(T *h_base_data) {
                          d_total_sum, spat_grid.x);
 
   CHECK_CUDA(cudaMemcpy(&mse, d_total_sum, sizeof(T), cudaMemcpyDeviceToHost));
-  CHECK_CUDA(cudaFree(d_partial_sums));
-  CHECK_CUDA(cudaFree(d_total_sum));
-  CHECK_CUDA(cudaFree(d_temp_storage));
   mse /= N;
   rmse = sqrt_val(mse);
   nrmse = rmse / (params_.spat_max - params_.spat_min);
@@ -644,7 +652,7 @@ void ProjectionSolver<T>::calculate_statistics(T *h_base_data) {
   std::cout << "MSE: " << mse << std::endl;
   std::cout << "RMSE: " << rmse << std::endl;
   std::cout << "NRMSE: " << nrmse << std::endl;
-  std::cout << "PNSR: " << psnr << " dB" << std::endl;
+  std::cout << "PSNR: " << psnr << " dB" << std::endl;
   mrfe = findMaxAbsComplex<T>(d_decomp_err_freq, F);
   std::cout << "max absolute frequency error: " << mrfe << std::endl;
   mrfe /= params_.freq_amp_max;
@@ -652,6 +660,64 @@ void ProjectionSolver<T>::calculate_statistics(T *h_base_data) {
   ssnr = computeSSNR<T>(params_.d_orig_freq, d_decomp_err_freq, params_.Nx,
                         params_.Ny, params_.Nz);
   std::cout << "SSNR: " << ssnr << " dB" << std::endl;
+
+  // For comparison with base compressor(s); remove if not needed
+  std::cout << std::endl
+            << "/////////////////// Before Correction ///////////////////"
+            << std::endl;
+
+  size_t num_blocks = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
+  difference_kernel<T>
+      <<<num_blocks, BLOCK_SIZE>>>(params_.d_orig_data, d_base_data, N);
+
+  mae = findMaxAbs(d_base_data, N);
+
+  CHECK_CUDA(cudaMalloc(&d_partial_sums, spat_grid.x * sizeof(T)));
+
+  mse_partial_sums_kernel<T>
+      <<<spat_grid, block, shared_mem_size>>>(d_base_data, d_partial_sums, N);
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  CHECK_CUDA(cudaMalloc(&d_total_sum, sizeof(T)));
+
+  temp_storage_bytes = 0;
+  cub::DeviceReduce::Sum(nullptr, temp_storage_bytes, d_partial_sums,
+                         d_total_sum, spat_grid.x);
+  CHECK_CUDA(cudaMalloc(&d_temp_storage, temp_storage_bytes));
+  cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_partial_sums,
+                         d_total_sum, spat_grid.x);
+
+  CHECK_CUDA(cudaMemcpy(&mse, d_total_sum, sizeof(T), cudaMemcpyDeviceToHost));
+  mse /= N;
+  rmse = sqrt_val(mse);
+  nrmse = rmse / (params_.spat_max - params_.spat_min);
+  psnr = -20 * log10(nrmse);
+
+  std::cout << "MAE: " << mae << std::endl;
+  std::cout << "MSE: " << mse << std::endl;
+  std::cout << "RMSE: " << rmse << std::endl;
+  std::cout << "NRMSE: " << nrmse << std::endl;
+  std::cout << "PSNR: " << psnr << " dB" << std::endl;
+
+  if constexpr (std::is_same_v<T, float>) {
+    CHECK_CUFFT(cufftExecR2C(params_.fft_plan_forward, d_base_data,
+                             (cufftComplex *)d_freq_edit_decomp_complex));
+  } else {
+    CHECK_CUFFT(cufftExecD2Z(params_.fft_plan_forward, d_base_data,
+                             (cufftDoubleComplex *)d_freq_edit_decomp_complex));
+  }
+
+  mrfe = findMaxAbsComplex<T>(d_freq_edit_decomp_complex, F);
+  std::cout << "max absolute frequency error: " << mrfe << std::endl;
+  mrfe /= params_.freq_amp_max;
+  std::cout << "max relative frequency error: " << mrfe << std::endl;
+  ssnr = computeSSNR<T>(params_.d_orig_freq, d_freq_edit_decomp_complex,
+                        params_.Nx, params_.Ny, params_.Nz);
+  std::cout << "SSNR: " << ssnr << " dB" << std::endl;
+
+  CHECK_CUDA(cudaFree(d_partial_sums));
+  CHECK_CUDA(cudaFree(d_total_sum));
+  CHECK_CUDA(cudaFree(d_temp_storage));
 
   CHECK_CUDA(cudaFree(d_freq_edit_decomp));
   CHECK_CUDA(cudaFree(d_spat_edit_decomp));

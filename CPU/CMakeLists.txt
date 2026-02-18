@@ -53,6 +53,12 @@ target_include_directories(ffcz_cpu PRIVATE
     ${ZSTD_INCLUDE_DIRS}
 )
 
+target_link_directories(ffcz_cpu PRIVATE
+    ${FFTW3_LIBRARY_DIRS}
+    ${FFTW3F_LIBRARY_DIRS}
+    ${ZSTD_LIBRARY_DIRS}
+)
+
 target_link_libraries(ffcz_cpu PRIVATE
     util
     ${FFTW3_LIBRARIES}

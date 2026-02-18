@@ -60,3 +60,25 @@ template <> struct CufftTraits<double> {
   static constexpr cufftType R2C = CUFFT_D2Z;
   static constexpr cufftType C2R = CUFFT_Z2D;
 };
+
+// Create a cuFFT plan that adapts to the actual dimensionality (1D/2D/3D).
+// Nx, Ny, Nz follow the convention: 1D uses Nz, 2D uses Ny*Nz, 3D uses all.
+inline void createCufftPlan(cufftHandle *plan, size_t Nx, size_t Ny, size_t Nz,
+                            cufftType type) {
+  int rank;
+  int dims[3];
+  if (Nx > 1) {
+    rank = 3;
+    dims[0] = static_cast<int>(Nx);
+    dims[1] = static_cast<int>(Ny);
+    dims[2] = static_cast<int>(Nz);
+  } else if (Ny > 1) {
+    rank = 2;
+    dims[0] = static_cast<int>(Ny);
+    dims[1] = static_cast<int>(Nz);
+  } else {
+    rank = 1;
+    dims[0] = static_cast<int>(Nz);
+  }
+  CHECK_CUFFT(cufftPlanMany(plan, rank, dims, NULL, 1, 0, NULL, 1, 0, type, 1));
+}

@@ -156,6 +156,11 @@ void ProjectionSolver<T>::extract_compact_representation() {
   size_t N = params_.N;
   size_t F = params_.F;
 
+  results_.freq_min_edit = T(0);
+  results_.freq_max_edit = T(0);
+  results_.spat_min_edit = T(0);
+  results_.spat_max_edit = T(0);
+
   compactNonZero(results_.freq_edits, results_.freq_edit_compact,
                  results_.num_active_freq, results_.convergence_tol, 2 * F);
   compactNonZero(results_.spat_edits, results_.spat_edit_compact,
@@ -417,39 +422,51 @@ void ProjectionSolver<T>::calculate_statistics(T *h_base_data) {
       reinterpret_cast<typename FftwTraits<T>::ComplexType *>(
           fftw_malloc(F * sizeof(typename FftwTraits<T>::ComplexType)));
 
-  // Values quantized as 0 are dequantized to be 0
-  T normalized_0 = -results_.freq_min_edit /
-                   (results_.freq_max_edit - results_.freq_min_edit);
-  T quant_0;
-  if (normalized_0 > T(0.5))
-    quant_0 = std::ceil(normalized_0 * ((1u << m) - 1));
-  else
-    quant_0 = std::floor(normalized_0 * ((1u << m) - 1));
-  T thres_lower = quant_0 / ((1u << m) - 1) *
-                      (results_.freq_max_edit - results_.freq_min_edit) +
-                  results_.freq_min_edit;
-  T thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
-                      (results_.freq_max_edit - results_.freq_min_edit) +
-                  results_.freq_min_edit;
-  quantize_and_dequantize(results_.freq_edits, freq_edit_decomp.data(),
-                          results_.freq_min_edit, results_.freq_max_edit, 2 * F,
-                          thres_lower, thres_upper);
+  // Frequency edits: quantize-dequantize, or copy directly if min == max
+  if (results_.freq_min_edit != results_.freq_max_edit) {
+    T normalized_0 = -results_.freq_min_edit /
+                     (results_.freq_max_edit - results_.freq_min_edit);
+    T quant_0;
+    if (normalized_0 > T(0.5))
+      quant_0 = std::ceil(normalized_0 * ((1u << m) - 1));
+    else
+      quant_0 = std::floor(normalized_0 * ((1u << m) - 1));
+    T thres_lower = quant_0 / ((1u << m) - 1) *
+                        (results_.freq_max_edit - results_.freq_min_edit) +
+                    results_.freq_min_edit;
+    T thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
+                        (results_.freq_max_edit - results_.freq_min_edit) +
+                    results_.freq_min_edit;
+    quantize_and_dequantize(results_.freq_edits, freq_edit_decomp.data(),
+                            results_.freq_min_edit, results_.freq_max_edit,
+                            2 * F, thres_lower, thres_upper);
+  } else {
+    std::copy(results_.freq_edits, results_.freq_edits + 2 * F,
+              freq_edit_decomp.data());
+  }
 
-  normalized_0 = -results_.spat_min_edit /
-                 (results_.spat_max_edit - results_.spat_min_edit);
-  if (normalized_0 > T(0.5))
-    quant_0 = std::ceil(normalized_0 * ((1u << m) - 1));
-  else
-    quant_0 = std::floor(normalized_0 * ((1u << m) - 1));
-  thres_lower = quant_0 / ((1u << m) - 1) *
-                    (results_.spat_max_edit - results_.spat_min_edit) +
-                results_.spat_min_edit;
-  thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
-                    (results_.spat_max_edit - results_.spat_min_edit) +
-                results_.spat_min_edit;
-  quantize_and_dequantize(results_.spat_edits, spat_edit_decomp.data(),
-                          results_.spat_min_edit, results_.spat_max_edit, N,
-                          thres_lower, thres_upper);
+  // Spatial edits: quantize-dequantize, or copy directly if min == max
+  if (results_.spat_min_edit != results_.spat_max_edit) {
+    T normalized_0 = -results_.spat_min_edit /
+                     (results_.spat_max_edit - results_.spat_min_edit);
+    T quant_0;
+    if (normalized_0 > T(0.5))
+      quant_0 = std::ceil(normalized_0 * ((1u << m) - 1));
+    else
+      quant_0 = std::floor(normalized_0 * ((1u << m) - 1));
+    T thres_lower = quant_0 / ((1u << m) - 1) *
+                        (results_.spat_max_edit - results_.spat_min_edit) +
+                    results_.spat_min_edit;
+    T thres_upper = (quant_0 + 1) / ((1u << m) - 1) *
+                        (results_.spat_max_edit - results_.spat_min_edit) +
+                    results_.spat_min_edit;
+    quantize_and_dequantize(results_.spat_edits, spat_edit_decomp.data(),
+                            results_.spat_min_edit, results_.spat_max_edit, N,
+                            thres_lower, thres_upper);
+  } else {
+    std::copy(results_.spat_edits, results_.spat_edits + N,
+              spat_edit_decomp.data());
+  }
 
   real_imag_to_complex<T>(freq_edit_decomp.data(), freq_edit_decomp_complex, F);
 

@@ -19,8 +19,7 @@ __global__ void normalize_add_kernel(const T *arr1, T *arr2, T factor,
                                      size_t size) {
   size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < size) {
-    arr2[idx] *= factor;
-    arr2[idx] += arr1[idx];
+    arr2[idx] += arr1[idx] * factor;
   }
 }
 

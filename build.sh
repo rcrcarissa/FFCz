@@ -42,6 +42,7 @@ if [ "$BUILD_SZ3" = true ]; then
         git clone https://github.com/szcompressor/SZ3.git
     fi
     cd SZ3
+    git checkout v3.2.2
     mkdir -p build && cd build
     cmake ..
     make -j16
@@ -56,6 +57,7 @@ if [ "$BUILD_ZFP" = true ]; then
         git clone https://github.com/LLNL/zfp.git
     fi
     cd zfp
+    git checkout v1.0.0
     mkdir -p build && cd build
     cmake ..
     make -j16
@@ -78,14 +80,14 @@ fi
 
 echo ""
 echo "Build complete!"
-echo "  FFCz CPU: $SCRIPT_DIR/CPU/build/ffcz_cpu"
 echo "  FFCz GPU: $SCRIPT_DIR/GPU/build/ffcz"
+echo "  FFCz CPU: $SCRIPT_DIR/CPU/build/ffcz_cpu"
 [ "$BUILD_SZ3" = true ] && echo "  SZ3: $SCRIPT_DIR/SZ3/build/tools/sz3/sz3"
 [ "$BUILD_ZFP" = true ] && echo "  ZFP: $SCRIPT_DIR/zfp/build/bin/zfp"
 [ "$BUILD_SPERR" = true ] && echo "  SPERR: $SCRIPT_DIR/SPERR/build/bin/sperr3d"
 
 # Build PATH export string
-PATH_EXPORT="export PATH=\"$SCRIPT_DIR/CPU/build:$SCRIPT_DIR/GPU/build"
+PATH_EXPORT="export PATH=\"$SCRIPT_DIR/GPU/build:$SCRIPT_DIR/CPU/build"
 [ "$BUILD_SZ3" = true ] && PATH_EXPORT="$PATH_EXPORT:$SCRIPT_DIR/SZ3/build/tools/sz3"
 [ "$BUILD_ZFP" = true ] && PATH_EXPORT="$PATH_EXPORT:$SCRIPT_DIR/zfp/build/bin"
 [ "$BUILD_SPERR" = true ] && PATH_EXPORT="$PATH_EXPORT:$SCRIPT_DIR/SPERR/build/bin"

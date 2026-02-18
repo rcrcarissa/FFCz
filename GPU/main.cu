@@ -163,14 +163,12 @@ template <typename T> void Run() {
     if constexpr (std::is_same_v<T, float>) {
       readRawArrayBinary(compressedFile + ".extreme", extreme, 4,
                          DataType::FLOAT);
-      CHECK_CUFFT(cufftPlan3d(&fft_plan_forward, Nx, Ny, Nz, CUFFT_R2C));
-      CHECK_CUFFT(cufftPlan3d(&fft_plan_inverse, Nx, Ny, Nz, CUFFT_C2R));
     } else {
       readRawArrayBinary(compressedFile + ".extreme", extreme, 4,
                          DataType::DOUBLE);
-      CHECK_CUFFT(cufftPlan3d(&fft_plan_forward, Nx, Ny, Nz, CUFFT_D2Z));
-      CHECK_CUFFT(cufftPlan3d(&fft_plan_inverse, Nx, Ny, Nz, CUFFT_Z2D));
     }
+    createCufftPlan(&fft_plan_forward, Nx, Ny, Nz, CufftTraits<T>::R2C);
+    createCufftPlan(&fft_plan_inverse, Nx, Ny, Nz, CufftTraits<T>::C2R);
 
     T *d_base_data, *d_spat_edit, *d_decompressed_data;
     CHECK_CUDA(cudaMalloc(&d_base_data, N * sizeof(T)));
@@ -270,7 +268,7 @@ template <typename T> void Run() {
     } else {
       readRawArrayBinary(originalFile, h_orig_data, N, DataType::FLOAT);
     }
-    const size_t max_iterations = 40;
+    const size_t max_iterations = 100;
     const T tolerance = 1e-6f;
 
     auto start = std::chrono::high_resolution_clock::now();
