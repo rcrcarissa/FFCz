@@ -19,14 +19,14 @@ cd FFCz
 cd GPU
 mkdir build && cd build
 cmake -DCMAKE_INSTALL_PREFIX:PATH=[INSTALL_DIR] ..
-make -j8
+make
 cd ../../
 
 # Build FFCz CPU only
 cd CPU
 mkdir build && cd build
 cmake -DCMAKE_INSTALL_PREFIX:PATH=[INSTALL_DIR] ..
-make -j8
+make
 cd ../../
 
 # Build both GPU and CPU versions of FFCz
