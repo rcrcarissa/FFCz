@@ -93,4 +93,4 @@ If you use FFCz, please cite:
 This project is licensed under the MIT License. See the `LICENSE` file for details.
 
 ## Contact
-Reach out to <mailto:ren.452@osu.edu> if you have any questions.
+Reach out to <ren.452@osu.edu> if you have any questions.
